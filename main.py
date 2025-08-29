@@ -15,7 +15,7 @@ from telegram.ext import (
 
 # ---------------------- Configuration ----------------------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")  # REQUIRED
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")  # REQUIRED: e.g. https://your-domain.onrender.com/webhook
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")  # REQUIRED: e.g. https://crown2ubot.onrender.com/webhook
 PORT = int(os.getenv("PORT", "10000"))  # Render assigns a PORT env automatically
 
 # Admin IDs
