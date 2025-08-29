@@ -1,274 +1,238 @@
 import os
 import logging
 import asyncio
-from datetime import time as dtime
+import datetime
 from zoneinfo import ZoneInfo
 
-from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
-)
-from telegram.constants import ParseMode
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application, ApplicationBuilder, CommandHandler, MessageHandler,
-    ContextTypes, filters
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
 )
 
-# ---------------------- Configuration ----------------------
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")  # REQUIRED
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")  # REQUIRED
-PORT = int(os.getenv("PORT", "10000"))  # Render assigns a PORT env automatically
+TOKEN = '8373228547:AAGgQRjbswliVZ8LXrb0IGnVlRYPqA9ituM'
+ADMIN_IDS = [1840751528, 1280460690, 1873662628]
+SUBSCRIBER_FILE = "subscribers.txt"
+LOG_DIR = "logs"
+DELAY = 0.5
 
-# Admin IDs
-DEFAULT_ADMIN_IDS = [1840751528, 1280460690, 1873662628]
-ADMIN_IDS = list({
-    *DEFAULT_ADMIN_IDS,
-    *[int(x.strip()) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip().isdigit()]
-})
-
-# Buttons/links
-CHANNEL_BUTTON_TEXT = os.getenv("CHANNEL_BUTTON_TEXT", "NANAS44 OFFICIAL CHANNEL")
-CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/nanas44")
-GROUP_BUTTON_TEXT = os.getenv("GROUP_BUTTON_TEXT", "E-WALLET ANGPAO GROUP")
-GROUP_URL = os.getenv("GROUP_URL", "https://t.me/addlist/OyQ3Pns_j3w5Y2M1")
-
-WELCOME_IMAGE = os.getenv("WELCOME_IMAGE", "banner-01.png")
-SUBSCRIBER_FILE = os.getenv("SUBSCRIBER_FILE", "subscribers.txt")
-LOG_DIR = os.getenv("LOG_DIR", "logs")
-DELAY = float(os.getenv("DELAY", "0.5"))  # seconds between messages
-
-TZ = ZoneInfo(os.getenv("TZ", "Asia/Kuala_Lumpur"))
-
-# ---------------------- Logging ----------------------
-os.makedirs(LOG_DIR, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    handlers=[
-        logging.FileHandler(os.path.join(LOG_DIR, "bot.log"), encoding="utf-8"),
-        logging.StreamHandler()
-    ],
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
-logger = logging.getLogger("crown2u-bot")
+logger = logging.getLogger("nanas44-bot")
 
+def save_log(filename: str, data: str):
+    os.makedirs(LOG_DIR, exist_ok=True)
+    with open(os.path.join(LOG_DIR, filename), "a", encoding="utf-8") as f:
+        f.write(data + "\n")
 
-def add_subscriber(chat_id: int) -> bool:
-    """Add chat_id to subscribers file if not exists."""
-    try:
-        if not os.path.exists(SUBSCRIBER_FILE):
-            with open(SUBSCRIBER_FILE, "w", encoding="utf-8") as f:
-                f.write("")
-        with open(SUBSCRIBER_FILE, "r", encoding="utf-8") as f:
-            ids = {line.strip() for line in f if line.strip()}
-        if str(chat_id) in ids:
-            return False
-        with open(SUBSCRIBER_FILE, "a", encoding="utf-8") as f:
-            f.write(f"{chat_id}\n")
-        return True
-    except Exception as e:
-        logger.exception("Failed to add subscriber: %s", e)
-        return False
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    first_name = update.effective_user.first_name or "there"
 
-
-def load_subscribers() -> list[int]:
-    try:
-        if not os.path.exists(SUBSCRIBER_FILE):
-            return []
-        with open(SUBSCRIBER_FILE, "r", encoding="utf-8") as f:
-            return [int(x.strip()) for x in f if x.strip().isdigit()]
-    except Exception as e:
-        logger.exception("Failed to load subscribers: %s", e)
-        return []
-
-
-def is_admin(user_id: int) -> bool:
-    return user_id in ADMIN_IDS
-
-
-def build_welcome_kb() -> InlineKeyboardMarkup:
-    buttons = [
-        [InlineKeyboardButton(CHANNEL_BUTTON_TEXT, url=CHANNEL_URL)],
-        [InlineKeyboardButton(GROUP_BUTTON_TEXT, url=GROUP_URL)],
-    ]
-    return InlineKeyboardMarkup(buttons)
-
-
-# ---------------------- Handlers ----------------------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    chat = update.effective_chat
-    user = update.effective_user
-    added = add_subscriber(chat.id)
+    if not os.path.exists(SUBSCRIBER_FILE):
+        open(SUBSCRIBER_FILE, "w").close()
+    with open(SUBSCRIBER_FILE, "r+", encoding="utf-8") as f:
+        lines = f.read().splitlines()
+        if user_id not in lines:
+            f.write(f"{user_id}\n")
+            save_log("new_users.txt", f"{datetime.datetime.now()} - {user_id}")
 
     welcome_text = (
-        f"👋 HI {user.first_name or 'there'}！\n\n"
-        "🪜 Step 1:\nJoin Nanas44 Official Channel Claim Free 🎁\n\n"
+        f"👋 HI {first_name}！\n\n"
+        "🪜 Step 1:\nJoin Crown2u Official Channel Claim Free 🎁\n\n"
         "🪜 Step 2:\nJoin Grouplink IOI Partnership Ambil E-wallet Angpaw 💸"
     )
-
-    kb = build_welcome_kb()
-
-    if os.path.exists(WELCOME_IMAGE):
-        try:
-            await context.bot.send_photo(
-                chat_id=chat.id,
-                photo=InputFile(WELCOME_IMAGE),
-                caption=welcome_text,
-                reply_markup=kb,
-            )
-        except Exception as e:
-            logger.warning("Failed to send welcome image: %s", e)
-            await context.bot.send_message(chat_id=chat.id, text=welcome_text, reply_markup=kb)
-    else:
-        await context.bot.send_message(chat_id=chat.id, text=welcome_text, reply_markup=kb)
-
-    if added:
-        logger.info("New subscriber added: %s", chat.id)
-
-
-async def subcount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_admin(update.effective_user.id):
-        return
-    subs = load_subscribers()
-    await update.effective_message.reply_text(f"📈 Subscribers: {len(subs)}")
-
-
-async def export_subscribers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_admin(update.effective_user.id):
-        return
-    subs = load_subscribers()
-    if not subs:
-        await update.effective_message.reply_text("No subscribers yet.")
-        return
-    await context.bot.send_document(
-        chat_id=update.effective_chat.id,
-        document=InputFile(SUBSCRIBER_FILE),
-        caption=f"Subscribers ({len(subs)})"
-    )
-
-
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    if not is_admin(user_id):
-        return
-
-    subs = load_subscribers()
-    if not subs:
-        await update.effective_message.reply_text("No subscribers to broadcast to.")
-        return
-
-    reply = update.effective_message.reply_to_message
-    text = " ".join(context.args) if context.args else None
-
-    sent = 0
-    fail = 0
-    for chat_id in subs:
-        try:
-            if reply:
-                await reply.copy(chat_id)
-            elif text:
-                await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML)
-            else:
-                continue
-            sent += 1
-        except Exception as e:
-            logger.warning("Broadcast to %s failed: %s", chat_id, e)
-            fail += 1
-        await asyncio.sleep(DELAY)
-
-    await update.effective_message.reply_text(f"✅ Broadcast sent: {sent}, ❌ failed: {fail}")
-
-
-async def forward_channel_to_subs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    msg = update.effective_message
-    forward_origin = getattr(msg, "forward_origin", None)
-    if not forward_origin or not getattr(forward_origin, "chat", None):
-        return
-
-    origin_chat = forward_origin.chat
-    origin_msg_id = forward_origin.message_id
-
-    subs = load_subscribers()
-    if not subs:
-        return
-
-    for chat_id in subs:
-        try:
-            await context.bot.copy_message(
-                chat_id=chat_id,
-                from_chat_id=origin_chat.id,
-                message_id=origin_msg_id,
-            )
-        except Exception as e:
-            logger.warning("Copy to %s failed: %s", chat_id, e)
-        await asyncio.sleep(DELAY)
-
-
-async def daily_backup_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    keyboard = [
+        [InlineKeyboardButton("CROWN2U OFFICIAL CHANNEL", url="https://t.me/Crown2umyr")],
+        [InlineKeyboardButton("E-WALLET ANGPAO GROUP", url="https://t.me/addlist/EkoRuASshHI5ZDg1")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     try:
-        subs = load_subscribers()
-        caption = f"🗂️ Daily backup — subscribers ({len(subs)})"
-        if os.path.exists(SUBSCRIBER_FILE):
-            for admin_id in ADMIN_IDS:
-                try:
-                    await context.bot.send_document(
-                        chat_id=admin_id,
-                        document=InputFile(SUBSCRIBER_FILE),
-                        caption=caption
-                    )
-                except Exception as e:
-                    logger.warning("Backup to %s failed: %s", admin_id, e)
-    except Exception as e:
-        logger.exception("Daily backup job failed: %s", e)
+        with open("banner-01.png", "rb") as img:
+            await context.bot.send_photo(
+                chat_id=update.effective_chat.id,
+                photo=img,
+                caption=welcome_text,
+                reply_markup=reply_markup,
+            )
+    except FileNotFoundError:
+        if update.message:
+            await update.message.reply_text(welcome_text, reply_markup=reply_markup)
 
-
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_admin(update.effective_user.id):
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
         return
-    txt = (
-        "<b>Admin Commands</b>\n"
-        "/subcount - Show subscriber count\n"
-        "/export_subscribers - Send subscribers.txt\n"
-        "/broadcast <text> or reply to a message with /broadcast\n\n"
-        "<b>Forwarding</b>\n"
-        "Forward any channel post to this bot to fanout to all subscribers."
+    message = " ".join(context.args)
+    if not message:
+        await update.message.reply_text("Please provide a message. Usage: /broadcast your message here")
+        return
+    if not os.path.exists(SUBSCRIBER_FILE):
+        await update.message.reply_text("No subscribers yet.")
+        return
+
+    with open(SUBSCRIBER_FILE, "r", encoding="utf-8") as f:
+        ids = list(set(f.read().splitlines()))
+
+    success = 0
+    for uid in ids:
+        try:
+            await context.bot.send_message(chat_id=int(uid), text=message)
+            success += 1
+            await asyncio.sleep(DELAY)
+        except Exception as e:
+            logger.warning(f"Broadcast to {uid} failed: {e}")
+
+    await update.message.reply_text(f"Broadcast sent to {success} users.")
+
+async def broadcast_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS or not update.message or not update.message.photo:
+        return
+
+    caption = update.message.caption or ""
+    if not os.path.exists(SUBSCRIBER_FILE):
+        await update.message.reply_text("No subscribers yet.")
+        return
+
+    with open(SUBSCRIBER_FILE, "r", encoding="utf-8") as f:
+        ids = list(set(f.read().splitlines()))
+
+    success = 0
+    file_id = update.message.photo[-1].file_id
+    for uid in ids:
+        try:
+            await context.bot.send_photo(chat_id=int(uid), photo=file_id, caption=caption)
+            success += 1
+            await asyncio.sleep(DELAY)
+        except Exception as e:
+            logger.warning(f"Photo broadcast to {uid} failed: {e}")
+
+    await update.message.reply_text(f"Photo broadcast sent to {success} users.")
+
+# ✅ 核心：只在“管理员转发来的消息”时群发真正的转发；非转发消息直接忽略，不会群发第二条
+async def forward_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    if not update.message:
+        return
+
+    # 只处理“转发来的消息”（来自频道/其他聊天），不是转发就不群发
+    if not update.message.forward_from_chat:
+        return
+
+    if not os.path.exists(SUBSCRIBER_FILE):
+        await update.message.reply_text("No subscribers yet.")
+        return
+
+    with open(SUBSCRIBER_FILE, "r", encoding="utf-8") as f:
+        ids = list(set(f.read().splitlines()))
+
+    from_chat_id = update.message.forward_from_chat.id
+    forward_message_id = update.message.forward_from_message_id
+
+    success = 0
+    for uid in ids:
+        try:
+            await context.bot.forward_message(
+                chat_id=int(uid),
+                from_chat_id=from_chat_id,
+                message_id=forward_message_id,
+            )
+            success += 1
+            await asyncio.sleep(DELAY)
+        except Exception as e:
+            logger.warning(f"Forward to {uid} failed: {e}")
+
+    await update.message.reply_text(f"✅ Forwarded to {success} users.")
+
+# ❌ 取消“自动监听频道贴子并群发”的功能，避免重复或误触发
+# （如需恢复自动功能，可使用 ChatType.CHANNEL 监听或 ChannelPostHandler）
+# async def channel_post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#     ...
+
+async def subcount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    if not os.path.exists(SUBSCRIBER_FILE):
+        await update.message.reply_text("👥 Total subscribers: 0")
+        return
+    with open(SUBSCRIBER_FILE, "r", encoding="utf-8") as f:
+        total = len(set(f.read().splitlines()))
+    await update.message.reply_text(f"👥 Total subscribers: {total}")
+
+async def export(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    if not os.path.exists(SUBSCRIBER_FILE):
+        await update.message.reply_text("No subscribers file yet.")
+        return
+    with open(SUBSCRIBER_FILE, "rb") as f:
+        await context.bot.send_document(chat_id=update.effective_chat.id, document=f)
+
+async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id in ADMIN_IDS:
+        await update.message.reply_text("Bot restarting...")
+        os._exit(1)
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    text = (
+        "🧠 Bot Commands:\n"
+        "/start - Welcome page\n"
+        "/broadcast <text> - Send message to all\n"
+        "Send a photo with caption - Broadcast image\n"
+        "Forward a channel post here - Forward to all (shows source)\n"
+        "/subcount - Subscriber count\n"
+        "/export - Download subscribers list\n"
+        "/restart - Restart bot"
     )
-    await update.effective_message.reply_text(txt, parse_mode=ParseMode.HTML)
+    await update.message.reply_text(text)
 
-
-# ---------------------- Application / Webhook ----------------------
-def build_app() -> Application:
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("subcount", subcount))
-    app.add_handler(CommandHandler("export_subscribers", export_subscribers))
-    app.add_handler(CommandHandler("broadcast", broadcast))
-    app.add_handler(MessageHandler(filters.FORWARDED, forward_channel_to_subs))
-
-    app.job_queue.run_daily(daily_backup_job, time=dtime(hour=0, minute=0, tzinfo=TZ))
-    return app
-
-
-async def main() -> None:
-    if not BOT_TOKEN or not WEBHOOK_URL:
-        raise RuntimeError("BOT_TOKEN and WEBHOOK_URL env vars are required.")
-
-    application = build_app()
-    await application.initialize()
-    await application.start()
-    await application.bot.set_webhook(url=WEBHOOK_URL)
-
-    await application.updater.start_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path="",
-    )
-    logger.info("Bot webhook running on port %s", PORT)
-    await asyncio.Event().wait()
-
+async def send_backup(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if not os.path.exists(SUBSCRIBER_FILE):
+            return
+        with open(SUBSCRIBER_FILE, "rb") as f:
+            for admin_id in ADMIN_IDS:
+                await context.bot.send_document(chat_id=admin_id, document=f)
+                f.seek(0)
+    except Exception as e:
+        logger.error(f"Backup error: {e}")
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Bot stopped.")
+    application = ApplicationBuilder().token(TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("broadcast", broadcast))
+    application.add_handler(CommandHandler("subcount", subcount))
+    application.add_handler(CommandHandler("export", export))
+    application.add_handler(CommandHandler("restart", restart))
+    application.add_handler(CommandHandler("help", help_cmd))
+
+    # 仅当管理员“转发”消息到 Bot 时触发群发（保留 Forwarded from）
+    application.add_handler(MessageHandler(filters.FORWARDED & filters.User(ADMIN_IDS), forward_broadcast))
+
+    # ❌ 不再监听频道自动推送
+    # application.add_handler(MessageHandler(filters.ChatType.CHANNEL, channel_post_handler))
+
+    application.job_queue.run_daily(
+        send_backup,
+        time=datetime.time(hour=0, minute=0, tzinfo=ZoneInfo("Asia/Kuala_Lumpur")),
+        name="daily_backup",
+    )
+
+    BASE_URL = os.environ["RENDER_EXTERNAL_URL"]
+    URL_PATH = f"/webhook/{TOKEN.split(':')[0]}"
+
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 8443)),
+        url_path=URL_PATH.lstrip("/"),
+        webhook_url=BASE_URL + URL_PATH,
+        drop_pending_updates=True,
+    )
